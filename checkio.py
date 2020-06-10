@@ -1,7 +1,7 @@
 import json
 from selenium import webdriver
 from webdriver_manager.chrome import ChromeDriverManager
-from selenium.common.exceptions import NoSuchElementException
+from selenium.common.exceptions import NoSuchElementException,ElementClickInterceptedException
 from selenium.webdriver.common.keys import Keys
 import time
 
@@ -112,7 +112,14 @@ class CheckIOSolver:
         self.driver.get(task.task_link)
         time.sleep(2)
         print("Click on SolveIt button")
-        solveit_link = self.driver.find_element_by_xpath("//a[@class='btn']").click()
+        try:
+            solveit_link = self.driver.find_element_by_xpath("//a[@class='btn']").click()
+        except ElementClickInterceptedException:
+            print("Pop up Appeared")
+            self.driver.find_element_by_xpath("//div[@class='congratulation__body__accept']").click()
+            print("Clicked on Close button of Popup")
+            time.sleep(2)
+            solveit_link = self.driver.find_element_by_xpath("//a[@class='btn']").click()
         time.sleep(2)
         self.current_solvingTask_url = self.driver.current_url
 
@@ -152,9 +159,9 @@ class CheckIOSolver:
             for word in code_words:
                 code_line += word.text
             print(code_line)
-            self.curr_google_solution_code.append(code_line)
+            if len(code_line) > 0: self.curr_google_solution_code.append(code_line)
 
-    def check_current_solution(self):
+    def check_current_solution(self,task):
         self.driver.get(self.current_solvingTask_url)
         solution_textarea_element = self.driver.find_element_by_xpath("//textarea")
         solution_textarea_element.send_keys(Keys.CONTROL + "a")
@@ -165,23 +172,23 @@ class CheckIOSolver:
             solution_textarea_element.send_keys(i)
             solution_textarea_element.send_keys('\n')
             solution_textarea_element.send_keys(Keys.HOME)
-        time.sleep(10)
+        time.sleep(2)
 
         self.driver.find_element_by_id('check-code-btnEl').click()
-        time.sleep(10)
+        time.sleep(4)
         success_element = self.driver.find_elements_by_xpath("//div[@class='animation-success']")
         if len(success_element)>0:
-            print("SUCCESS Completed Task " + self.current_solvingTask_url)
+            print("SUCCESS Completed Task " + task.title)
             return True
         else:
-            print("Failed Task " + self.current_solvingTask_url)
+            print("Failed Task " +  task.title)
             return False
 
 
     def solve_current_task(self,task):
         for result_link in self.current_google_result_link:
             self.get_solution_code(result_link)
-            if self.check_current_solution(): break
+            if self.check_current_solution(task): break
 
 
     def solve_all_tasks_in_station(self):
