@@ -33,9 +33,7 @@ class CheckIOSolver:
         self.SEARCH_TEXT = "Python checkIO "
         self.all_station_list = []
         self.opened_station_list = []
-        self.solved_station_list =[]
         self.total_stations = 0
-        self.visited_station_count = 0
         self.task_ToSolve_List = []
         self.chekio_mainpage_url = ""
         self.current_solvingTask_url = ""
@@ -71,7 +69,7 @@ class CheckIOSolver:
     def get_all_stations(self):
         all_stations =  self.driver.find_elements_by_xpath("//div[contains(@class,'map__station')]")
         self.total_stations = len(all_stations)
-        print("Total Number of Stations " + str(self.total_stations))
+        print("Total Number of Stations = " + str(self.total_stations))
         for station in all_stations:
             station_link = station.find_element_by_css_selector('a.map__station__link').get_attribute("href")
             print(station_link)
@@ -83,49 +81,58 @@ class CheckIOSolver:
         if self.driver.current_url != self.chekio_mainpage_url:
             self.driver.get(self.chekio_mainpage_url)
         opened_stations = self.driver.find_elements_by_xpath("//div[contains(@class,'map__station_state_opened')]")
-        print("Total Number of Opened Stations " + str(len(opened_stations)))
+        print("Total Number of Opened Stations = " + str(len(opened_stations)))
         self.opened_station_list = []
         for station in opened_stations:
             open_station_link = station.find_element_by_css_selector('a.map__station__link').get_attribute("href")
-            print(open_station_link)
             self.opened_station_list.append(open_station_link)
+        print(self.opened_station_list)
 
     def get_all_tasks_in_station(self, station_link):
         self.driver.get(station_link)
         time.sleep(5)
         task_elements = self.driver.find_elements_by_xpath("//div[@class='island-tasks__container__column island-tasks__info']")
-        print("Total Number of Tasks = " + str(len(task_elements)) + " in station " + station_link)
+        print("\nTotal Number of Tasks = " + str(len(task_elements)) + " in station " + station_link)
         self.task_ToSolve_List = []
         for task_element in task_elements:
             try:
+                try:
+                    side_sign_element = task_element.find_element_by_css_selector('div.island-tasks__side__sign')
+                    side_sign = side_sign_element.get_attribute("title")
+                except NoSuchElementException:
+                    print("No Such Element Exception")
+                    side_sign = "Haven't seen"
                 task_element_summary = task_element.find_element_by_class_name('island-tasks__task__summary')
                 task_link = task_element_summary.find_element_by_css_selector('a').get_attribute("href")
                 title = task_element_summary.find_element_by_css_selector('span').get_attribute("title")
-                side_sign = "Haven't seen"
                 task_data = Task(title, task_link, side_sign)
                 self.task_ToSolve_List.append(task_data)
             except NoSuchElementException:
                 print("No Such Element Exception")
 
+
+
     def navigate_to_taskSolvepage(self,task):
-        print("Navigate to Task - " + task.title)
+        print("Navigate to Task -> " + task.title)
         self.driver.get(task.task_link)
         time.sleep(2)
-        print("Click on SolveIt button")
+        print("Click on Solve It button")
         try:
             solveit_link = self.driver.find_element_by_xpath("//a[@class='btn']").click()
         except ElementClickInterceptedException:
-            print("Pop up Appeared")
+            print("--- Pop up Appeared ----")
             self.driver.find_element_by_xpath("//div[@class='congratulation__body__accept']").click()
-            print("Clicked on Close button of Popup")
+            print("--- Closed Popup ---")
             time.sleep(2)
             solveit_link = self.driver.find_element_by_xpath("//a[@class='btn']").click()
         time.sleep(2)
         self.current_solvingTask_url = self.driver.current_url
+        print("\nCurrent Task's Solving Page, URL -> " + self.current_solvingTask_url)
 
 
     def get_google_search_result(self,task):
         #Navigate to Google.com and enter the Search text "Python checkIO {TASK NAME}"
+        print("Google Search: Task - " + task.title + "\n")
         self.driver.get(self.google)
         time.sleep(2)
         searchbox = self.driver.find_element_by_name("q")
@@ -137,7 +144,6 @@ class CheckIOSolver:
         google_results = self.driver.find_elements_by_xpath("//div[@class='r']/a")
         result_count = 0
         self.current_google_result_link = []
-        print("No of google results " + str(len(google_results)))
         for results in google_results:
             href = results.get_attribute("href")
             if 'publications' in href:
@@ -148,6 +154,7 @@ class CheckIOSolver:
         print(self.current_google_result_link)
 
     def get_solution_code(self, google_result_link):
+        print("\nGet Googled Solution --- ")
         self.driver.get(google_result_link)
         time.sleep(2)
         publications_code = self.driver.find_element_by_xpath("//div[@class='publications__info__code']")
@@ -160,8 +167,10 @@ class CheckIOSolver:
                 code_line += word.text
             print(code_line)
             if len(code_line) > 0: self.curr_google_solution_code.append(code_line)
+            
 
     def check_current_solution(self,task):
+        print("\nPaste the Code and Check Solution for Task - " + task.title)
         self.driver.get(self.current_solvingTask_url)
         solution_textarea_element = self.driver.find_element_by_xpath("//textarea")
         solution_textarea_element.send_keys(Keys.CONTROL + "a")
@@ -175,13 +184,13 @@ class CheckIOSolver:
         time.sleep(2)
 
         self.driver.find_element_by_id('check-code-btnEl').click()
-        time.sleep(4)
+        time.sleep(6)
         success_element = self.driver.find_elements_by_xpath("//div[@class='animation-success']")
         if len(success_element)>0:
-            print("SUCCESS Completed Task " + task.title)
+            print("SUCCESS!!! Completed Task -: " + task.title)
             return True
         else:
-            print("Failed Task " +  task.title)
+            print("Failed Task -: " +  task.title)
             return False
 
 
@@ -190,14 +199,15 @@ class CheckIOSolver:
             self.get_solution_code(result_link)
             if self.check_current_solution(task): break
 
-
     def solve_all_tasks_in_station(self):
         for task in self.task_ToSolve_List:
+            print("Solve Task - " + task.title)
+            if task.side_sign == "Solved" or task.side_sign == "Locked":
+                print(task.title + " is " + task.side_sign + "\n")
+                continue
             self.get_google_search_result(task)
             self.navigate_to_taskSolvepage(task)
             self.solve_current_task(task)
-
-
 
     def get_all_missions(self):
         self.get_all_opened_stations()
