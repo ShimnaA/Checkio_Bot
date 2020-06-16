@@ -3,6 +3,8 @@ from selenium import webdriver
 from webdriver_manager.chrome import ChromeDriverManager
 from selenium.common.exceptions import NoSuchElementException,ElementClickInterceptedException
 from selenium.webdriver.common.keys import Keys
+from bs4 import BeautifulSoup
+from dataclasses import dataclass
 import time
 
 
@@ -12,15 +14,11 @@ def read_credentials():
         keys = json.loads(f.read())
         return keys
 
-#Class Task contains the details of the Task.
+@dataclass
 class Task:
-    def __init__(self, title, task_link, side_sign):
-      self.title = title
-      self.task_link = task_link
-      self.side_sign = side_sign  # whether the task status is Solved/Haven't seen
+    title: str
+    task_link: str
 
-    def __str__(self):
-        return 'Task(title= '+self.title+' , task_link = '+str(self.task_link)+' , side_sign = '+str(self.side_sign)+')'
 
 class CheckIOSolver:
     def __init__(self, login, password):
@@ -28,12 +26,11 @@ class CheckIOSolver:
         self.password = password
         self.google = "https://www.google.com/"
         self.base_url = "https://checkio.org/"
+        self.home_url = "https://py.checkio.org/"
         self.driver = webdriver.Chrome(ChromeDriverManager().install())
         self.driver.implicitly_wait(50) # Set impicit waits for 50 seconds
         self.SEARCH_TEXT = "Python checkIO "
-        self.all_station_list = []
         self.opened_station_list = []
-        self.total_stations = 0
         self.task_ToSolve_List = []
         self.chekio_mainpage_url = ""
         self.current_solvingTask_url = ""
@@ -45,6 +42,7 @@ class CheckIOSolver:
         self.driver.maximize_window()
         self.get_on_python_checkio()
         self.put_credentials_to_form()
+        self.chekio_mainpage_url = self.driver.current_url
 
     def put_credentials_to_form(self):
         try:
@@ -55,7 +53,6 @@ class CheckIOSolver:
             password_field.send_keys(self.password)
             password_field.submit()
             time.sleep(1)
-
         except NoSuchElementException:
             print("Exception NoSuchElementException")
 
@@ -66,54 +63,35 @@ class CheckIOSolver:
         except NoSuchElementException:
             print("incorrect Page")
 
-    def get_all_stations(self):
-        all_stations =  self.driver.find_elements_by_xpath("//div[contains(@class,'map__station')]")
-        self.total_stations = len(all_stations)
-        print("Total Number of Stations = " + str(self.total_stations))
-        for station in all_stations:
-            station_link = station.find_element_by_css_selector('a.map__station__link').get_attribute("href")
-            print(station_link)
-            self.all_station_list.append(station_link)
-        self.chekio_mainpage_url = self.driver.current_url
-        print(self.chekio_mainpage_url)
 
     def get_all_opened_stations(self):
         if self.driver.current_url != self.chekio_mainpage_url:
             self.driver.get(self.chekio_mainpage_url)
-        opened_stations = self.driver.find_elements_by_xpath("//div[contains(@class,'map__station_state_opened')]")
-        print("Total Number of Opened Stations = " + str(len(opened_stations)))
-        self.opened_station_list = []
-        for station in opened_stations:
-            open_station_link = station.find_element_by_css_selector('a.map__station__link').get_attribute("href")
-            self.opened_station_list.append(open_station_link)
+        opened_stations = self.driver.find_elements_by_class_name("map__station_state_opened")
+        print("Total Number of Opened Stations = {}".format(len(opened_stations)))
+        self.opened_station_list = [station.find_element_by_css_selector('a').get_attribute("href") for station in opened_stations]
         print(self.opened_station_list)
 
     def get_all_tasks_in_station(self, station_link):
         self.driver.get(station_link)
-        time.sleep(5)
-        task_elements = self.driver.find_elements_by_xpath("//div[@class='island-tasks__container__column island-tasks__info']")
-        print("\nTotal Number of Tasks = " + str(len(task_elements)) + " in station " + station_link)
+        soup = BeautifulSoup(self.driver.page_source, 'html.parser')
+        tasks = soup.find_all(class_='island-tasks__container')
         self.task_ToSolve_List = []
-        for task_element in task_elements:
-            try:
-                try:
-                    side_sign_element = task_element.find_element_by_css_selector('div.island-tasks__side__sign')
-                    side_sign = side_sign_element.get_attribute("title")
-                except NoSuchElementException:
-                    print("No Such Element Exception")
-                    side_sign = "Haven't seen"
-                task_element_summary = task_element.find_element_by_class_name('island-tasks__task__summary')
-                task_link = task_element_summary.find_element_by_css_selector('a').get_attribute("href")
-                title = task_element_summary.find_element_by_css_selector('span').get_attribute("title")
-                task_data = Task(title, task_link, side_sign)
-                self.task_ToSolve_List.append(task_data)
-            except NoSuchElementException:
-                print("No Such Element Exception")
-
-
+        for task in tasks:
+            task_status_element = task.find(class_='island-tasks__side__sign')
+            if task_status_element:
+                task_status = task_status_element.get('title')
+            else:
+                task_status = "Haven't Seen"
+            if task_status != 'Solved':
+                title = task.find(class_='island-tasks__task__title').get('title')
+                link = self.home_url + task.find('a').get('href')
+                self.task_ToSolve_List.append(Task(title, link))
+        print(self.task_ToSolve_List)
 
     def navigate_to_taskSolvepage(self,task):
         print("Navigate to Task -> " + task.title)
+        print(task.task_link)
         self.driver.get(task.task_link)
         time.sleep(2)
         print("Click on Solve It button")
@@ -141,15 +119,10 @@ class CheckIOSolver:
         searchbox.submit()
         time.sleep(2)
 
-        google_results = self.driver.find_elements_by_xpath("//div[@class='r']/a")
-        result_count = 0
+        google_results = self.driver.find_elements_by_xpath("//div[@class='r']/a[contains(@href,'publications')]")
         self.current_google_result_link = []
         for results in google_results:
-            href = results.get_attribute("href")
-            if 'publications' in href:
-                self.current_google_result_link.append(href)
-                result_count += 1
-            if result_count > 5: break
+            self.current_google_result_link.append(results.get_attribute("href"))
         time.sleep(3)
         print(self.current_google_result_link)
 
@@ -167,7 +140,7 @@ class CheckIOSolver:
                 code_line += word.text
             print(code_line)
             if len(code_line) > 0: self.curr_google_solution_code.append(code_line)
-            
+
 
     def check_current_solution(self,task):
         print("\nPaste the Code and Check Solution for Task - " + task.title)
@@ -193,7 +166,6 @@ class CheckIOSolver:
             print("Failed Task -: " +  task.title)
             return False
 
-
     def solve_current_task(self,task):
         for result_link in self.current_google_result_link:
             self.get_solution_code(result_link)
@@ -202,38 +174,23 @@ class CheckIOSolver:
     def solve_all_tasks_in_station(self):
         for task in self.task_ToSolve_List:
             print("Solve Task - " + task.title)
-            if task.side_sign == "Solved" or task.side_sign == "Locked":
-                print(task.title + " is " + task.side_sign + "\n")
-                continue
             self.get_google_search_result(task)
             self.navigate_to_taskSolvepage(task)
             self.solve_current_task(task)
 
-    def get_all_missions(self):
+    def solve_missions(self):
         self.get_all_opened_stations()
         for link in self.opened_station_list:
             self.get_all_tasks_in_station(link)
             self.solve_all_tasks_in_station()
 
-    def solve_missions(self):
-        #To make sure all the stations get covered (Can be replaced by while true)
-        # Loops until count of stations visited (visited_station_count) is > total number of stations(24))
-        self.get_all_stations()
-        for i in range(self.total_stations):
-            self.get_all_missions()
-
-
-
-
     def main_logic(self):
         self.login_to_checkio()
-        self.solve_missions()
-
-
+        for i in range(10):
+            self.solve_missions()
 
         time.sleep(3)
         self.driver.quit()
-
 
 if __name__ == '__main__':
     credentials = read_credentials()
