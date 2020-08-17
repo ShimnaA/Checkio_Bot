@@ -85,7 +85,9 @@ class CheckIOSolver:
                 task_status = "Haven't Seen"
             if task_status != 'Solved':
                 title = task.find(class_='island-tasks__task__title').get('title')
-                link = self.home_url + task.find('a').get('href')
+                #remove extra / from home url and append
+                link = self.home_url[:-1] + task.find('a').get('href')
+                print("link " + link)
                 self.task_ToSolve_List.append(Task(title, link))
         print(self.task_ToSolve_List)
 
